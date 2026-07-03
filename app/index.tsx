@@ -1,7 +1,8 @@
-// Splash / role selector — supports all 6 roles
+// Landing — Role selector. First-time users see splash → welcome → here
 // Powered by OnSpace.AI
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Redirect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -10,13 +11,17 @@ import { Colors, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { Role } from '@/services/mockData';
 
-const roles: { id: Role; title: string; subtitle: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; gradient: [string, string] }[] = [
-  { id: 'parent',     title: 'Parent',        subtitle: 'Stay connected with your child',   icon: 'account-heart',       gradient: ['#0F2A5C', '#2A6FDB'] },
-  { id: 'teacher',    title: 'Teacher',       subtitle: 'Manage class effortlessly',        icon: 'book-education',      gradient: ['#1B5E3F', '#1FA971'] },
-  { id: 'admin',      title: 'Admin',         subtitle: 'School-wide operations',           icon: 'shield-account',      gradient: ['#6B3FA0', '#A36BD6'] },
-  { id: 'conductor',  title: 'Conductor',     subtitle: 'Manage bus boarding & safety',     icon: 'bus-clock',           gradient: ['#B45309', '#F59E0B'] },
-  { id: 'bus_driver', title: 'Bus Driver',    subtitle: 'Route & trip management',          icon: 'steering',            gradient: ['#064E3B', '#10B981'] },
-  { id: 'security',   title: 'Security Guard',subtitle: 'Gate & early pickup management',  icon: 'shield-star',         gradient: ['#7F1D1D', '#EF4444'] },
+const roles: {
+  id: Role; title: string; subtitle: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  gradient: [string, string];
+}[] = [
+  { id: 'parent',     title: 'Parent',         subtitle: 'Stay connected with your child',  icon: 'account-heart',  gradient: ['#0F2A5C', '#2A6FDB'] },
+  { id: 'teacher',    title: 'Teacher',        subtitle: 'Manage class effortlessly',       icon: 'book-education', gradient: ['#1B5E3F', '#1FA971'] },
+  { id: 'admin',      title: 'Admin',          subtitle: 'School-wide operations',          icon: 'shield-account', gradient: ['#6B3FA0', '#A36BD6'] },
+  { id: 'conductor',  title: 'Conductor',      subtitle: 'Bus boarding & safety',           icon: 'bus-clock',      gradient: ['#B45309', '#F59E0B'] },
+  { id: 'bus_driver', title: 'Bus Driver',     subtitle: 'Route & trip management',         icon: 'steering',       gradient: ['#064E3B', '#10B981'] },
+  { id: 'security',   title: 'Security Guard', subtitle: 'Gate & early pickup management', icon: 'shield-star',    gradient: ['#7F1D1D', '#EF4444'] },
 ];
 
 export default function LandingScreen() {
@@ -26,13 +31,14 @@ export default function LandingScreen() {
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+        <Image source={require('@/assets/kvs-logo.png')} style={{ width: 80, height: 80 }} contentFit="contain" />
+        <ActivityIndicator color={Colors.primary} size="large" style={{ marginTop: 20 }} />
       </View>
     );
   }
 
   if (user) {
-    if (user.role === 'parent') return <Redirect href="/(parent)" />;
+    if (user.role === 'parent') return <Redirect href="/pin" />;
     if (user.role === 'teacher') return <Redirect href="/(teacher)" />;
     if (user.role === 'admin') return <Redirect href="/(admin)" />;
     if (user.role === 'conductor') return <Redirect href="/(conductor)" />;
@@ -43,14 +49,13 @@ export default function LandingScreen() {
   return (
     <LinearGradient colors={['#081A3D', '#0F2A5C', '#1F4280']} style={{ flex: 1 }}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Brand */}
           <View style={styles.brandRow}>
-            <View style={styles.logoBadge}>
-              <MaterialCommunityIcons name="shield-star" size={28} color={Colors.saffron} />
-            </View>
+            <Image source={require('@/assets/kvs-logo.png')} style={styles.logo} contentFit="contain" />
             <View style={{ marginLeft: 12 }}>
               <Text style={styles.brand}>KVS EduShield AI</Text>
-              <Text style={styles.brandSub}>Kendriya Vidyalaya · Class 10 Pilot</Text>
+              <Text style={styles.brandSub}>Kendriya Vidyalaya Sangathan</Text>
             </View>
           </View>
 
@@ -84,7 +89,7 @@ export default function LandingScreen() {
 
           <View style={styles.footer}>
             <MaterialCommunityIcons name="lock-check" size={14} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.footerText}>Secured by Supabase Auth · RLS enabled</Text>
+            <Text style={styles.footerText}>Made by team NovaThink · Secured by Supabase Auth</Text>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -93,10 +98,10 @@ export default function LandingScreen() {
 }
 
 const styles = StyleSheet.create({
-  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
   content: { padding: Spacing.xl, paddingBottom: Spacing.xxxl },
   brandRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.xxl },
-  logoBadge: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  logo: { width: 48, height: 48 },
   brand: { color: '#fff', fontSize: 18, fontWeight: '800' },
   brandSub: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 },
   hero: { marginVertical: Spacing.lg },

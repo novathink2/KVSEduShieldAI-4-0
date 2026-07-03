@@ -1,9 +1,9 @@
-// Security Guard: Gate Management Dashboard
+// Security Guard: Gate dashboard — real data, gate pickup posting
 // Powered by OnSpace.AI
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { Pill } from '@/components/ui/Pill';
@@ -11,17 +11,20 @@ import { ScreenHeader } from '@/components/layout/ScreenHeader';
 import { Colors, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useAlert } from '@/template';
 import { useAuth } from '@/hooks/useAuth';
-import { fetchPickupRequests } from '@/services/schoolData';
+import { fetchPickupRequests, updatePickupStatus } from '@/services/schoolData';
 import { getSupabaseClient } from '@/template';
+import { useRouter } from 'expo-router';
 
 const supabase = getSupabaseClient();
 
 export default function SecurityIndex() {
   const { user } = useAuth();
   const { showAlert } = useAlert();
+  const router = useRouter();
   const [pickups, setPickups] = useState<any[]>([]);
   const [buses, setBuses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [time, setTime] = useState(new Date().toLocaleTimeString('en-IN'));
 
   useEffect(() => {
@@ -32,28 +35,28 @@ export default function SecurityIndex() {
 
   const loadData = async () => {
     const [pickupData, busData] = await Promise.all([
-      fetchPickupRequests(),
+      fetchPickupRequests({ status: 'Approved' }),
       supabase.from('buses').select('*').order('number'),
     ]);
-    setPickups(pickupData.filter(p => p.status === 'Approved'));
+    setPickups(pickupData);
     setBuses(busData.data ?? []);
     setLoading(false);
+    setRefreshing(false);
   };
 
-  const approvePickup = async (id: string, studentName: string) => {
-    await supabase.from('early_pickup_requests').update({ status: 'Completed' }).eq('id', id);
+  const releaseStudent = async (id: string, studentName: string) => {
+    await updatePickupStatus(id, 'Completed');
     setPickups(prev => prev.filter(p => p.id !== id));
     showAlert('Released', `${studentName} has been released to authorized person.`);
   };
 
   const onBuses = buses.filter(b => b.status === 'On Route' || b.status === 'Returning').length;
   const atSchool = buses.filter(b => b.status === 'At School').length;
-  const pending = pickups.length;
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <SafeAreaView edges={['top']}>
-        <ScreenHeader title="Gate Management" subtitle={`KVS School · Main Gate · ${time}`} />
+        <ScreenHeader title="Gate Management" subtitle={`Main Gate · ${time}`} />
       </SafeAreaView>
 
       {loading ? (
@@ -61,13 +64,28 @@ export default function SecurityIndex() {
           <ActivityIndicator color="#EF4444" />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* KPI row */}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} />}
+        >
+          {/* KPI */}
           <View style={styles.kpiRow}>
             <KPI label="Buses Active" value={`${onBuses}`} color={Colors.info} icon="bus" />
             <KPI label="At School" value={`${atSchool}`} color={Colors.success} icon="school" />
-            <KPI label="Pickups" value={`${pending}`} color={Colors.warning} icon="car-arrow-right" />
+            <KPI label="Pending Pickups" value={`${pickups.length}`} color={Colors.warning} icon="car-arrow-right" />
           </View>
+
+          {/* Quick action — log gate pickup */}
+          <Pressable onPress={() => router.push('/(security)/pickup')} style={styles.quickAction}>
+            <View style={styles.qaIcon}>
+              <MaterialCommunityIcons name="account-arrow-right" color="#fff" size={24} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.qaTitle}>Log Gate Pickup</Text>
+              <Text style={styles.qaSub}>Parent arrived at gate for early pickup</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" color="rgba(255,255,255,0.8)" size={22} />
+          </Pressable>
 
           {/* Approved pickups */}
           <Text style={styles.section}>Approved Early Pickups</Text>
@@ -87,13 +105,12 @@ export default function SecurityIndex() {
                   </View>
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.studentName}>{p.students?.name ?? 'Unknown'}</Text>
-                    <Text style={styles.pickupMeta}>Section: {p.students?.section} · Time: {p.pickup_time}</Text>
-                    <Text style={styles.pickupMeta}>Authorized: {p.authorized_person ?? 'Parent'}</Text>
-                    <Text style={styles.pickupReason}>Reason: {p.reason}</Text>
+                    <Text style={styles.pickupMeta}>{p.students?.section} · {p.pickup_time}</Text>
+                    <Text style={styles.pickupMeta}>Person: {p.authorized_person ?? 'Parent'}</Text>
+                    <Text style={styles.pickupReason}>{p.reason}</Text>
                   </View>
                 </View>
-                <Pressable onPress={() => approvePickup(p.id, p.students?.name ?? 'Student')}
-                  style={styles.releaseBtn}>
+                <Pressable onPress={() => releaseStudent(p.id, p.students?.name ?? 'Student')} style={styles.releaseBtn}>
                   <MaterialCommunityIcons name="gate-open" color="#fff" size={18} />
                   <Text style={styles.releaseBtnText}>Mark as Released</Text>
                 </Pressable>
@@ -111,12 +128,14 @@ export default function SecurityIndex() {
                 </View>
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.busTitle}>{bus.number}</Text>
-                  <Text style={styles.busSub}>{bus.route}</Text>
+                  <Text style={styles.busSub}>{bus.route} · ETA: {bus.eta}</Text>
                 </View>
                 <Pill label={bus.status} tone={bus.status === 'At School' ? 'success' : bus.status === 'Idle' ? 'neutral' : 'info'} />
               </View>
             </Card>
           ))}
+
+          <Text style={styles.footer}>Made by team NovaThink</Text>
         </ScrollView>
       )}
     </View>
@@ -138,7 +157,11 @@ const styles = StyleSheet.create({
   kpiRow: { flexDirection: 'row', gap: 10, marginBottom: Spacing.xl },
   kpi: { flex: 1, backgroundColor: '#fff', borderRadius: Radius.md, paddingVertical: Spacing.md, alignItems: 'center', gap: 4 },
   kpiValue: { fontSize: 22, fontWeight: '900' },
-  kpiLabel: { fontSize: 10, color: Colors.textMuted, fontWeight: '700', letterSpacing: 0.4 },
+  kpiLabel: { fontSize: 10, color: Colors.textMuted, fontWeight: '700', letterSpacing: 0.4, textAlign: 'center' },
+  quickAction: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EF4444', borderRadius: Radius.lg, padding: Spacing.lg, marginBottom: Spacing.xl, ...Shadows.raised },
+  qaIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  qaTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  qaSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
   section: { fontSize: 15, fontWeight: '800', color: Colors.textPrimary, marginBottom: Spacing.sm, marginTop: Spacing.md },
   pickupCard: { marginBottom: Spacing.md },
   row: { flexDirection: 'row', alignItems: 'flex-start' },
@@ -152,4 +175,5 @@ const styles = StyleSheet.create({
   busIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   busTitle: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
   busSub: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  footer: { textAlign: 'center', color: Colors.textMuted, fontSize: 11, fontWeight: '600', marginTop: Spacing.xl },
 });

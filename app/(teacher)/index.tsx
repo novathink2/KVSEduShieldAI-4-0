@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { Pill } from '@/components/ui/Pill';
 import { Colors, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { incidents, homeworkList } from '@/services/mockData';
+// Real data only — no mock fallbacks
 import { fetchStudents, fetchTodayAttendance } from '@/services/schoolData';
 
 export default function TeacherDashboard() {
@@ -24,6 +24,8 @@ export default function TeacherDashboard() {
 
   const [presentCount, setPresentCount] = useState(0);
   const [totalStudents, setTotalStudents] = useState(0);
+  const [hwCount, setHwCount] = useState(0);
+  const [incidentCount, setIncidentCount] = useState(0);
 
   useEffect(() => {
     loadAttendanceSummary();
@@ -31,15 +33,18 @@ export default function TeacherDashboard() {
 
   const loadAttendanceSummary = async () => {
     const students = await fetchStudents(myClass);
+    setTotalStudents(students.length);
     if (students.length > 0) {
       const presence = await fetchTodayAttendance(myClass);
       setPresentCount(Object.values(presence).filter(Boolean).length);
-      setTotalStudents(students.length);
-    } else {
-      // fallback
-      setPresentCount(33);
-      setTotalStudents(36);
     }
+    // Load homework and incidents in parallel
+    const [hw, inc] = await Promise.all([
+      import('@/services/schoolData').then(m => m.fetchHomework(myClass)),
+      import('@/services/schoolData').then(m => m.fetchIncidents(myClass)),
+    ]);
+    setHwCount(hw.length);
+    setIncidentCount(inc.filter((i: any) => !i.resolved).length);
   };
 
   const absent = totalStudents - presentCount;
@@ -84,8 +89,8 @@ export default function TeacherDashboard() {
         <View style={styles.statsGrid}>
           <StatCard label="Present" value={`${presentCount}/${totalStudents}`} icon="account-check" tone={Colors.success} bg={Colors.successBg} />
           <StatCard label="Absent" value={`${absent}`} icon="account-remove" tone={Colors.danger} bg={Colors.dangerBg} />
-          <StatCard label="HW Pending" value={`${homeworkList.length}`} icon="clipboard-text" tone={Colors.warning} bg={Colors.warningBg} />
-          <StatCard label="Incidents" value={`${incidents.length}`} icon="alert-circle" tone={Colors.danger} bg={Colors.dangerBg} />
+          <StatCard label="HW Pending" value={`${hwCount}`} icon="clipboard-text" tone={Colors.warning} bg={Colors.warningBg} />
+          <StatCard label="Incidents" value={`${incidentCount}`} icon="alert-circle" tone={Colors.danger} bg={Colors.dangerBg} />
         </View>
 
         {/* Quick attendance CTA */}
@@ -208,7 +213,7 @@ export default function TeacherDashboard() {
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.cardTitle}>Incident Reports</Text>
-                    <Text style={styles.cardSub}>{incidents.length} reported · Class {myClass}</Text>
+                    <Text style={styles.cardSub}>{incidentCount} reported · Class {myClass}</Text>
                   </View>
                   <Pill label={`${incidents.length}`} tone="danger" />
                 </View>

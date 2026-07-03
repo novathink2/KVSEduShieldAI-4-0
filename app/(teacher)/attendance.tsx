@@ -1,4 +1,4 @@
-// Teacher: Real attendance flow — ALL PRESENT default, teacher marks absent, CSV export
+// Teacher: Real attendance — ALL PRESENT default, teacher marks absent, CSV export
 // Powered by OnSpace.AI
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,12 +14,10 @@ import {
   fetchStudents, fetchTodayAttendance, generateAttendanceCSV,
   saveAttendance, StudentRow
 } from '@/services/schoolData';
-import { studentsClass10A } from '@/services/mockData';
 
 export default function TeacherAttendance() {
   const { showAlert } = useAlert();
   const { user } = useAuth();
-
   const section = user?.classTeacherOf ?? user?.section ?? '10A';
 
   const [students, setStudents] = useState<StudentRow[]>([]);
@@ -34,16 +32,8 @@ export default function TeacherAttendance() {
   const loadData = async () => {
     setLoading(true);
     const stds = await fetchStudents(section);
-    if (stds.length === 0) {
-      const fallback: StudentRow[] = studentsClass10A.map(s => ({
-        id: s.id, name: s.name, admission_no: s.admissionNo, section: s.section, attendance_pct: s.attendancePct,
-      }));
-      setStudents(fallback);
-      // Default ALL present (no hardware)
-      setPresence(Object.fromEntries(fallback.map(s => [s.id, true])));
-    } else {
-      setStudents(stds);
-      // Fetch today's attendance — defaults all present if no record
+    setStudents(stds);
+    if (stds.length > 0) {
       const att = await fetchTodayAttendance(section);
       setPresence(att);
     }
@@ -57,7 +47,8 @@ export default function TeacherAttendance() {
   const filtered = useMemo(() =>
     search.trim() ? students.filter(s =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.admission_no.toLowerCase().includes(search.toLowerCase())
+      s.admission_no.toLowerCase().includes(search.toLowerCase()) ||
+      String(s.roll_no ?? '').includes(search)
     ) : students
   , [students, search]);
 
@@ -72,11 +63,6 @@ export default function TeacherAttendance() {
     showAlert('All Present', `${students.length} students marked present.`);
   };
 
-  const markAbsent = (id: string) => {
-    setPresence(p => ({ ...p, [id]: false }));
-    setSaved(false);
-  };
-
   const save = async () => {
     setSaving(true);
     const { error } = await saveAttendance(section, presence, user?.id);
@@ -87,21 +73,14 @@ export default function TeacherAttendance() {
     const absentMsg = absentStudents.length > 0
       ? `\nAbsent: ${absentStudents.slice(0, 3).join(', ')}${absentStudents.length > 3 ? ` +${absentStudents.length - 3} more` : ''}`
       : '\nAll students present.';
-    showAlert(
-      'Attendance saved',
-      `${present} present · ${absent} absent · ${total > 0 ? Math.round((present / total) * 100) : 0}%${absentMsg}`,
-      [{ text: 'Done' }]
-    );
+    showAlert('Attendance saved', `${present}P · ${absent}A · ${total > 0 ? Math.round((present / total) * 100) : 0}%${absentMsg}`);
   };
 
   const exportCSV = async () => {
     const csv = generateAttendanceCSV(students, presence, section);
     try {
       const date = new Date().toLocaleDateString('en-IN').replace(/\//g, '_');
-      await Share.share({
-        title: `Class${section.replace(' ', '')}_${date}`,
-        message: csv,
-      });
+      await Share.share({ title: `Class${section}_${date}`, message: csv });
     } catch {
       showAlert('Export failed', 'Could not share the attendance file.');
     }
@@ -119,18 +98,14 @@ export default function TeacherAttendance() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <SafeAreaView edges={['top']}>
-        <ScreenHeader title={`Class ${section}`} subtitle={`${total} students · Tap absent to mark`} />
+        <ScreenHeader title={`Class ${section}`} subtitle={`${total} students · Tap to mark absent`} />
       </SafeAreaView>
 
-      {/* Info banner — default all present */}
       <View style={styles.infoBanner}>
         <MaterialCommunityIcons name="information" color={Colors.info} size={16} />
-        <Text style={styles.infoBannerText}>
-          All students marked Present by default. Tap a student to mark Absent.
-        </Text>
+        <Text style={styles.infoBannerText}>All students marked Present by default. Tap a name to mark Absent.</Text>
       </View>
 
-      {/* Summary */}
       <View style={styles.summary}>
         <SummaryCell value={`${present}`} label="Present" color={Colors.success} />
         <View style={styles.sep} />
@@ -139,7 +114,6 @@ export default function TeacherAttendance() {
         <SummaryCell value={`${total > 0 ? Math.round((present / total) * 100) : 0}%`} label="Rate" color={Colors.primary} />
       </View>
 
-      {/* Actions */}
       <View style={styles.actionRow}>
         <Pressable onPress={markAllPresent} style={styles.allBtn}>
           <MaterialCommunityIcons name="check-all" color={Colors.success} size={18} />
@@ -151,16 +125,10 @@ export default function TeacherAttendance() {
         </Pressable>
       </View>
 
-      {/* Search */}
       <View style={styles.searchWrap}>
         <MaterialCommunityIcons name="magnify" color={Colors.textMuted} size={18} />
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search by name or admission no…"
-          placeholderTextColor={Colors.textMuted}
-          style={styles.searchInput}
-        />
+        <TextInput value={search} onChangeText={setSearch} placeholder="Search by name, adm no or roll…"
+          placeholderTextColor={Colors.textMuted} style={styles.searchInput} />
         {search.length > 0 && (
           <Pressable onPress={() => setSearch('')} hitSlop={8}>
             <MaterialCommunityIcons name="close-circle" color={Colors.textMuted} size={18} />
@@ -175,13 +143,10 @@ export default function TeacherAttendance() {
         renderItem={({ item, index }) => {
           const isPresent = presence[item.id] ?? true;
           return (
-            <Pressable
-              onPress={() => toggle(item.id)}
-              style={[styles.studentRow, !isPresent && styles.absentRow]}
-            >
+            <Pressable onPress={() => toggle(item.id)} style={[styles.studentRow, !isPresent && styles.absentRow]}>
               <View style={[styles.rollNo, { backgroundColor: isPresent ? Colors.successBg : Colors.dangerBg }]}>
                 <Text style={[styles.rollNoText, { color: isPresent ? Colors.success : Colors.danger }]}>
-                  {index + 1}
+                  {item.roll_no ?? index + 1}
                 </Text>
               </View>
               <View style={[styles.avatar, { backgroundColor: isPresent ? Colors.successBg : Colors.dangerBg }]}>
@@ -205,7 +170,7 @@ export default function TeacherAttendance() {
           <View style={{ alignItems: 'center', paddingTop: 60 }}>
             <MaterialCommunityIcons name="account-group" color={Colors.textMuted} size={48} />
             <Text style={{ color: Colors.textMuted, fontSize: 16, marginTop: 12, fontWeight: '600' }}>
-              {search ? 'No students match your search' : `No students in section ${section}`}
+              {search ? 'No students match search' : `No students in section ${section}`}
             </Text>
           </View>
         }
@@ -215,14 +180,12 @@ export default function TeacherAttendance() {
         {saved && (
           <View style={styles.savedBadge}>
             <MaterialCommunityIcons name="check-circle" color={Colors.success} size={16} />
-            <Text style={styles.savedText}>Saved successfully</Text>
+            <Text style={styles.savedText}>Saved · Made by team NovaThink</Text>
           </View>
         )}
         <PrimaryButton
           label={saving ? 'Saving…' : `Save Attendance (${present}P · ${absent}A)`}
-          onPress={save}
-          size="lg"
-          loading={saving}
+          onPress={save} size="lg" loading={saving}
         />
       </View>
     </View>
@@ -239,49 +202,22 @@ function SummaryCell({ value, label, color }: { value: string; label: string; co
 }
 
 const styles = StyleSheet.create({
-  infoBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: Colors.infoBg, marginHorizontal: Spacing.xl, marginTop: Spacing.md,
-    borderRadius: Radius.md, padding: 10,
-  },
+  infoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.infoBg, marginHorizontal: Spacing.xl, marginTop: Spacing.md, borderRadius: Radius.md, padding: 10 },
   infoBannerText: { flex: 1, color: Colors.info, fontSize: 12, fontWeight: '600', lineHeight: 18 },
-  summary: {
-    flexDirection: 'row', backgroundColor: '#fff',
-    marginHorizontal: Spacing.xl, marginTop: Spacing.md,
-    borderRadius: Radius.lg, paddingVertical: Spacing.lg, ...Shadows.card,
-  },
+  summary: { flexDirection: 'row', backgroundColor: '#fff', marginHorizontal: Spacing.xl, marginTop: Spacing.md, borderRadius: Radius.lg, paddingVertical: Spacing.lg, ...Shadows.card },
   cell: { flex: 1, alignItems: 'center' },
   sep: { width: 1, backgroundColor: Colors.border },
   cellValue: { fontSize: 24, fontWeight: '900' },
   cellLabel: { fontSize: 11, color: Colors.textMuted, fontWeight: '700', marginTop: 4, letterSpacing: 0.6 },
-  actionRow: {
-    paddingHorizontal: Spacing.xl, marginTop: Spacing.lg,
-    flexDirection: 'row', gap: 10,
-  },
-  allBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 11, paddingHorizontal: 14,
-    backgroundColor: Colors.successBg, borderRadius: Radius.md, flex: 1, justifyContent: 'center',
-  },
+  actionRow: { paddingHorizontal: Spacing.xl, marginTop: Spacing.lg, flexDirection: 'row', gap: 10 },
+  allBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 14, backgroundColor: Colors.successBg, borderRadius: Radius.md, flex: 1, justifyContent: 'center' },
   allBtnText: { color: Colors.success, fontSize: 14, fontWeight: '800' },
-  exportBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 11, paddingHorizontal: 14,
-    backgroundColor: Colors.infoBg, borderRadius: Radius.md, flex: 1, justifyContent: 'center',
-  },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 14, backgroundColor: Colors.infoBg, borderRadius: Radius.md, flex: 1, justifyContent: 'center' },
   exportBtnText: { color: Colors.info, fontSize: 14, fontWeight: '800' },
-  searchWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: Spacing.xl, marginTop: Spacing.md, marginBottom: 4,
-    backgroundColor: '#fff', borderRadius: Radius.md, paddingHorizontal: 12, paddingVertical: 10,
-    borderWidth: 1, borderColor: Colors.border,
-  },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: Spacing.xl, marginTop: Spacing.md, marginBottom: 4, backgroundColor: '#fff', borderRadius: Radius.md, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: Colors.border },
   searchInput: { flex: 1, fontSize: 14, color: Colors.textPrimary, fontWeight: '500' },
   list: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg, paddingBottom: 140 },
-  studentRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#fff', borderRadius: Radius.md, padding: 10, ...Shadows.card,
-  },
+  studentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: Radius.md, padding: 10, ...Shadows.card },
   absentRow: { backgroundColor: '#FFF4F5', borderLeftWidth: 3, borderLeftColor: Colors.danger },
   rollNo: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   rollNoText: { fontSize: 11, fontWeight: '900' },
@@ -291,12 +227,7 @@ const styles = StyleSheet.create({
   studentMeta: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, minWidth: 50, justifyContent: 'center' },
   toggleText: { color: '#fff', fontSize: 12, fontWeight: '900', letterSpacing: 0.4 },
-  footer: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
-    padding: Spacing.xl, backgroundColor: 'rgba(245,247,251,0.97)',
-    borderTopWidth: 1, borderTopColor: Colors.border,
-    gap: Spacing.sm,
-  },
+  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: Spacing.xl, backgroundColor: 'rgba(245,247,251,0.97)', borderTopWidth: 1, borderTopColor: Colors.border, gap: Spacing.sm },
   savedBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' },
-  savedText: { color: Colors.success, fontSize: 13, fontWeight: '700' },
+  savedText: { color: Colors.success, fontSize: 12, fontWeight: '700' },
 });

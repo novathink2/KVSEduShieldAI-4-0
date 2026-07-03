@@ -1,4 +1,4 @@
-// Root layout
+// Root layout — updated with splash routing
 // Powered by OnSpace.AI
 
 import { Stack } from 'expo-router';
@@ -14,8 +14,11 @@ export default function RootLayout() {
         <AuthProvider>
           <StatusBar style="auto" />
           <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="splash" />
+            <Stack.Screen name="welcome" />
             <Stack.Screen name="index" />
             <Stack.Screen name="login" />
+            <Stack.Screen name="pin" />
             <Stack.Screen name="(parent)" />
             <Stack.Screen name="(teacher)" />
             <Stack.Screen name="(admin)" />

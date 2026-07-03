@@ -1,7 +1,8 @@
-// Role-specific login — supports all roles including conductor, bus_driver, security
+// Updated login — teachers use their own email (no auto-generation)
 // Powered by OnSpace.AI
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -13,86 +14,68 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { useAuth } from '@/hooks/useAuth';
 import { Role } from '@/services/mockData';
 
-// ============================================================
-// Credential mapping rules
-// Teacher/Admin: email = code@kvs.in, password = Kvpatm2.<code>
-// Parent:        email = parent.<last4>@kvs.in, password = Pass@<last4>
-// Conductor:     email = conductor.<code>@kvs.in, password = Cond@<code>
-// Bus Driver:    email = driver.<code>@kvs.in, password = Driver@<code>
-// Security:      email = security.<code>@kvs.in, password = Security@<code>
-// ============================================================
-
 const cfg: Record<Role, {
-  title: string; helper: string; field1: string; ph1: string; ph2: string; gradient: [string, string];
+  title: string; helper: string; emailLabel: string; emailPh: string; passPh: string; gradient: [string, string];
 }> = {
   parent: {
     title: 'Parent Login',
-    helper: 'Username: Parent@Last4Digits  •  Pass: Pass@Last4Digits',
-    field1: 'Username', ph1: 'Parent@4350', ph2: 'Pass@4350',
+    helper: 'Enter admission number last 4 digits as username (e.g. 4350)',
+    emailLabel: 'Admission No. (last 4 digits)', emailPh: '4350', passPh: 'Pass@4350',
     gradient: ['#0F2A5C', '#2A6FDB'],
   },
   teacher: {
     title: 'Teacher Login',
-    helper: 'Username: Employee Code  •  Password: Kvpatm2.<code>',
-    field1: 'Employee Code', ph1: 'e.g. 79553', ph2: 'Kvpatm2.79553',
+    helper: 'Enter your official KVS email address and password',
+    emailLabel: 'Your KVS Email', emailPh: 'yourname@kvs.in', passPh: 'Your password',
     gradient: ['#1B5E3F', '#1FA971'],
   },
   admin: {
     title: 'Admin Login',
-    helper: 'Username: Employee Code  •  Password: Kvpatm2.<code>',
-    field1: 'Employee Code', ph1: 'e.g. 21160', ph2: 'Kvpatm2.21160',
+    helper: 'Enter your official KVS admin email and password',
+    emailLabel: 'Admin Email', emailPh: 'admin@kvs.in', passPh: 'Your password',
     gradient: ['#6B3FA0', '#A36BD6'],
   },
   conductor: {
     title: 'Conductor Login',
-    helper: 'Code: C001–C005  •  Pass: Cond@<code>',
-    field1: 'Conductor Code', ph1: 'e.g. C001', ph2: 'Cond@C001',
+    helper: 'Enter your conductor code (e.g. C001) and password',
+    emailLabel: 'Conductor Code', emailPh: 'C001', passPh: 'Cond@C001',
     gradient: ['#B45309', '#F59E0B'],
   },
   bus_driver: {
     title: 'Bus Driver Login',
-    helper: 'Code: D001–D005  •  Pass: Driver@<code>',
-    field1: 'Driver Code', ph1: 'e.g. D001', ph2: 'Driver@D001',
+    helper: 'Enter your driver code (e.g. D001) and password',
+    emailLabel: 'Driver Code', emailPh: 'D001', passPh: 'Driver@D001',
     gradient: ['#064E3B', '#10B981'],
   },
   security: {
     title: 'Security Guard Login',
-    helper: 'Code: SG001–SG003  •  Pass: Security@<code>',
-    field1: 'Guard Code', ph1: 'e.g. SG001', ph2: 'Security@SG001',
+    helper: 'Enter your guard code (e.g. SG001) and password',
+    emailLabel: 'Guard Code', emailPh: 'SG001', passPh: 'Security@SG001',
     gradient: ['#7F1D1D', '#EF4444'],
   },
 };
 
-function extractLast4(identifier: string): string {
-  return identifier.trim().replace(/^[Pp]arent@/i, '').replace(/@.*/, '').slice(-4);
-}
-
 function toEmail(role: Role, identifier: string): string {
   const id = identifier.trim().toLowerCase();
-  if (role === 'parent') return `parent.${extractLast4(identifier)}@kvs.in`;
+  if (role === 'parent') {
+    const digits = id.replace(/\D/g, '').slice(-4);
+    return `parent.${digits}@kvs.in`;
+  }
   if (role === 'conductor') return `conductor.${id}@kvs.in`;
   if (role === 'bus_driver') return `driver.${id}@kvs.in`;
   if (role === 'security') return `security.${id}@kvs.in`;
-  return `${id.replace(/@.*/, '')}@kvs.in`;
+  // Teacher/Admin: use exactly what they typed (their real email)
+  return id.includes('@') ? id : `${id}@kvs.in`;
 }
 
-function defaultPassword(role: Role, identifier: string): string {
+function defaultPass(role: Role, identifier: string): string {
   const id = identifier.trim();
-  if (role === 'parent') return `Pass@${extractLast4(identifier)}`;
+  if (role === 'parent') return `Pass@${id.replace(/\D/g, '').slice(-4)}`;
   if (role === 'conductor') return `Cond@${id}`;
   if (role === 'bus_driver') return `Driver@${id}`;
   if (role === 'security') return `Security@${id}`;
-  return `Kvpatm2.${id}`;
+  return '';
 }
-
-const testCreds: Record<Role, string[]> = {
-  parent: ['SIVAGANGA N S (10C):  Parent@4350 / Pass@4350', 'SANA D S (10C):  Parent@4351 / Pass@4351'],
-  teacher: ['JINI P (10C class teacher):  79553 / Kvpatm2.79553', 'AMBILY KRISHNAN (11A):  8955 / Kvpatm2.8955'],
-  admin: ['Admin code: 21160 / Kvpatm2.21160'],
-  conductor: ['Bus 1 conductor:  C001 / Cond@C001', 'Bus 3 conductor:  C003 / Cond@C003'],
-  bus_driver: ['Bus 1 driver:  D001 / Driver@D001', 'Bus 3 driver:  D003 / Driver@D003'],
-  security: ['Main gate guard:  SG001 / Security@SG001'],
-};
 
 export default function LoginScreen() {
   const params = useLocalSearchParams<{ role?: string }>();
@@ -109,21 +92,25 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!identifier.trim()) {
-      showAlert('Missing field', `Please enter your ${config.field1.toLowerCase()}.`);
+      showAlert('Missing field', `Please enter your ${config.emailLabel.toLowerCase()}.`);
       return;
     }
     const email = toEmail(role, identifier);
-    const pass = password.trim() || defaultPassword(role, identifier);
+    const pass = password.trim() || defaultPass(role, identifier);
+    if (!pass) {
+      showAlert('Password required', 'Please enter your password.');
+      return;
+    }
     setBusy(true);
     const { error } = await signInWithPassword(email, pass, role);
     setBusy(false);
     if (error) { showAlert('Login failed', error); return; }
-    if (role === 'teacher') router.replace('/(teacher)');
+    if (role === 'parent') router.replace('/pin');
+    else if (role === 'teacher') router.replace('/(teacher)');
     else if (role === 'admin') router.replace('/(admin)');
     else if (role === 'conductor') router.replace('/(conductor)');
     else if (role === 'bus_driver') router.replace('/(bus_driver)');
     else if (role === 'security') router.replace('/(security)');
-    else router.replace('/(parent)');
   };
 
   return (
@@ -137,23 +124,25 @@ export default function LoginScreen() {
             </Pressable>
 
             <View style={styles.brandRow}>
-              <View style={styles.logoBadge}>
-                <MaterialCommunityIcons name="shield-star" size={22} color={Colors.saffron} />
+              <Image source={require('@/assets/kvs-logo.png')} style={styles.logo} contentFit="contain" />
+              <View style={{ marginLeft: 12 }}>
+                <Text style={styles.brand}>KVS EduShield AI</Text>
+                <Text style={styles.brandSub}>Kendriya Vidyalaya Sangathan</Text>
               </View>
-              <Text style={styles.brand}>KVS EduShield AI</Text>
             </View>
 
             <Text style={styles.title}>{config.title}</Text>
             <Text style={styles.helper}>{config.helper}</Text>
 
             <View style={styles.card}>
-              <Text style={styles.label}>{config.field1}</Text>
+              <Text style={styles.label}>{config.emailLabel}</Text>
               <TextInput
                 value={identifier}
                 onChangeText={setIdentifier}
-                placeholder={config.ph1}
+                placeholder={config.emailPh}
                 placeholderTextColor={Colors.textMuted}
                 autoCapitalize="none"
+                keyboardType={role === 'parent' ? 'number-pad' : 'email-address'}
                 style={styles.input}
               />
 
@@ -162,7 +151,7 @@ export default function LoginScreen() {
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
-                  placeholder={config.ph2}
+                  placeholder={config.passPh}
                   placeholderTextColor={Colors.textMuted}
                   secureTextEntry={!showPass}
                   autoCapitalize="none"
@@ -173,6 +162,13 @@ export default function LoginScreen() {
                 </Pressable>
               </View>
 
+              {(role === 'teacher' || role === 'admin') && (
+                <View style={styles.noteBox}>
+                  <MaterialCommunityIcons name="information" color={Colors.info} size={14} />
+                  <Text style={styles.noteText}>Use your official KVS email. First-time users: account is created automatically. Update your email in Profile after login.</Text>
+                </View>
+              )}
+
               <PrimaryButton label="Login" onPress={handleLogin} loading={busy} size="lg" style={{ marginTop: Spacing.xl }} />
 
               <View style={styles.infoBox}>
@@ -181,12 +177,7 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            <View style={styles.testBox}>
-              <Text style={styles.testTitle}>Test credentials</Text>
-              {(testCreds[role] ?? []).map((line, i) => (
-                <Text key={i} style={styles.testLine}>{line}</Text>
-              ))}
-            </View>
+            <Text style={styles.footerText}>Made by team NovaThink</Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -198,19 +189,20 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.xl, paddingBottom: Spacing.xxxl },
   back: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.xl },
   backText: { color: '#fff', fontSize: 15, fontWeight: '600', marginLeft: 6 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: Spacing.xxl },
-  logoBadge: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
-  brand: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.xxl },
+  logo: { width: 48, height: 48 },
+  brand: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  brandSub: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2 },
   title: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  helper: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 6, marginBottom: Spacing.xxl, lineHeight: 20 },
+  helper: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 6, marginBottom: Spacing.xxl, lineHeight: 20 },
   card: { backgroundColor: '#fff', borderRadius: Radius.xl, padding: Spacing.xl, ...Shadows.raised },
   label: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 0.3, textTransform: 'uppercase' },
   input: { marginTop: 8, backgroundColor: Colors.surfaceMuted, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 14, fontSize: 16, color: Colors.textPrimary },
   inputWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
   eyeBtn: { position: 'absolute', right: 14, bottom: 14 },
+  noteBox: { marginTop: Spacing.md, backgroundColor: Colors.infoBg, borderRadius: Radius.md, padding: Spacing.md, flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  noteText: { color: Colors.info, fontSize: 12, fontWeight: '600', flex: 1, lineHeight: 18 },
   infoBox: { marginTop: Spacing.lg, backgroundColor: Colors.successBg, borderRadius: Radius.md, padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: 8 },
   infoText: { color: Colors.success, fontSize: 12, fontWeight: '600', flex: 1 },
-  testBox: { marginTop: Spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: Radius.lg, padding: Spacing.lg },
-  testTitle: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '800', marginBottom: 8, letterSpacing: 0.4 },
-  testLine: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '500', marginTop: 4, lineHeight: 18 },
+  footerText: { textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '600', marginTop: Spacing.xl },
 });
